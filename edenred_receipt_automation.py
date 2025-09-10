@@ -53,11 +53,13 @@ class EdenredBatchReceiptSubmitter:
         result = upload_response.get('result', {})
         total_amount = result.get('totalAmount', {})
         merchant_data = result.get('merchantName', {})
+        date_data = result.get('date', {})
         
         return {
             'amount': total_amount.get('data', 0),
             'merchant_name': merchant_data.get('data', '') if isinstance(merchant_data, dict) else str(merchant_data),
-            'mongo_ref_id': result.get('mongoDbRefId', '')
+            'mongo_ref_id': result.get('mongoDbRefId', ''),
+            'receipt_date': date_data.get('data', '')
         }
     
     def submit_claim(self, receipt_data, expense_date=None, merchant_override=None, expense_type="transit"):
@@ -65,7 +67,21 @@ class EdenredBatchReceiptSubmitter:
         
         amount = receipt_data['amount']
         merchant_name = merchant_override or receipt_data['merchant_name'] or "Unknown"
-        expense_date_str = expense_date or datetime.now().strftime("%Y-%m-%d")
+        
+        # Use receipt date for expense date if available, otherwise use provided date or today
+        receipt_date = receipt_data.get('receipt_date', '')
+        if expense_date:
+            expense_date_str = expense_date
+        elif receipt_date:
+            expense_date_str = receipt_date[:10]  # Extract YYYY-MM-DD from ISO format
+        else:
+            expense_date_str = datetime.now().strftime("%Y-%m-%d")
+        
+        # Use receipt date for payment date if available, otherwise use expense date
+        if receipt_date:
+            payment_date = receipt_date[:10]  # Extract YYYY-MM-DD from ISO format
+        else:
+            payment_date = expense_date_str
         
         payload = {
             "idMember": self.member_id,
@@ -79,12 +95,12 @@ class EdenredBatchReceiptSubmitter:
             "idClaimReceiptType": 4,
             "idClaimStatus": 4001,
             "provider": {"name": merchant_name, "address1": "", "address2": "", "city": "", "state": "", "zip": ""},
-            "claimPayment": [{"paymentDate": expense_date_str, "paidAmount": float(amount), "idPaymentType": 2, "idPaymentStatus": 1}],
+            "claimPayment": [{"paymentDate": payment_date, "paidAmount": float(amount), "idPaymentType": 2, "idPaymentStatus": 1}],
             "claimDocuments": [{"idDocument": 0}],
             "MongoDbRefId": receipt_data['mongo_ref_id'],
             "isMultiMonthReceipt": False,
             "receiptMerchantName": merchant_name,
-            "receiptPurchaseDate": f"{expense_date_str}T16:47:00Z",
+            "receiptPurchaseDate": receipt_date or f"{expense_date_str}T16:47:00Z",
             "receiptAmount": float(amount),
             "idSubmissionStatus": 3,
             "idExpenseType": self.expense_types.get(expense_type.lower(), 6)
