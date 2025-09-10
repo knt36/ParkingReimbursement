@@ -37,8 +37,13 @@ class EdenredBatchReceiptSubmitter:
         
     def upload_receipt(self, image_path):
         url = f"{self.base_url}/Claim/api/1.0/Claim/Receipt"
+        
+        # Detect MIME type
+        ext = Path(image_path).suffix.lower()
+        mime_type = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'pdf': 'application/pdf'}.get(ext[1:], 'image/jpeg')
+        
         with open(image_path, 'rb') as f:
-            files = {'file': (os.path.basename(image_path), f)}
+            files = {'file': (os.path.basename(image_path), f.read(), mime_type)}
             headers = self.headers.copy()
             if 'Content-Type' in headers:
                 del headers['Content-Type']
